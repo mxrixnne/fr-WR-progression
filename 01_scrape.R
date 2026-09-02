@@ -28,3 +28,18 @@ for(i in seq_along(nodes)){
 
 
 
+
+url  <- "https://en.wikipedia.org/wiki/50_metres_freestyle"
+page <- read_html(url)
+
+# Extract the table immediately following each long course heading
+men_lc <- page |>
+  html_element(xpath = "//*[@id='Men_long_course']/following::table[1]") |>
+  html_table()
+
+women_lc <- page |>
+  html_element(xpath = "//*[@id='Women_long_course']/following::table[1]") |>
+  html_table()
+
+
+
