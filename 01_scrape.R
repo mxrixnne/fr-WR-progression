@@ -1,45 +1,58 @@
 # Scrape freestyle WR progression since 1976
 
 library(rvest)
-library(tidyverse)
-library(stringr)
-library(jsonlite)
+library(dplyr)
+library(purrr)
+library(lubridate)
 
-url <- "https://en.wikipedia.org/wiki/50_metres_freestyle"
-page <- read_html(url)
+urls <- c(
+  "50m" = "https://en.wikipedia.org/wiki/50_metres_freestyle",
+  "100m" = "https://en.wikipedia.org/wiki/World_record_progression_100_metres_freestyle",
+  "200m" = "https://en.wikipedia.org/wiki/200_metres_freestyle",
+  "400m" = "https://en.wikipedia.org/wiki/400_metres_freestyle",
+  "800m" = "https://en.wikipedia.org/wiki/800_metres_freestyle",
+  "1500m" = "https://en.wikipedia.org/wiki/1500_metres_freestyle"
+)
 
-nodes <- page |> html_elements("h2, h3, table.wikitable")
+scrape_event <- function(url){
+  page <- read_html(url)
+  xpath_base <- "(//h3[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'long course')])"
 
-heading <- NA_character_
-men_table <- NULL
-women_table <- NULL
+  list(
+    Men = page |> html_element(xpath = paste0(xpath_base, "[1]/following::table[1]")) |> html_table(),
+    Women = page |> html_element(xpath = paste0(xpath_base, "[2]/following::table[1]")) |> html_table()
+  )
+}
 
-for(i in seq_along(nodes)){
-  node <- nodes[[i]]
-  if (html_name(node) %in% c("h2", "h3")){
-    heading <- html_text(node, trim = TRUE)
-  } else if (is.null(men_table) && str_detect(heading, "Men")){
-    men_table <- node
-  } else if (is.null(women_table) && str_detect(heading, "Women")){
-    women_table <- node
+clean_table <- function(tbl){
+  # Take care of empty or NA column names
+  col_names <- names(tbl)
+  bad_cols <- is.na(col_names) | col_names == ""
+  if(any(bad_cols)){
+    col_names[bad_cols] <- paste0("col_", which(bad_cols))
   }
+  names(tbl) <- make.unique(col_names)
+  
+  tbl |> 
+    mutate(across(everything(), as.character)) |> 
+    mutate(across(everything(), ~ sub("\\[.*?\\]", "", .x)))
 }
 
 
+# Create combined df
+combined_records <- imap_dfr(urls, function(url, event){
+  data <- scrape_event(url)
+  
+  bind_rows(
+    clean_table(data$Men) |> mutate(Event = event, Gender = "Men"),
+    clean_table(data$Women) |> mutate(Event = event, Gender = "Women")
+  )
+}) |> 
+  # Parse dates
+  mutate(Date = as.Date(parse_date_time(Date, orders = c("dmy", "mdy")))) |> 
+  relocate(Event, Gender) |> 
+  select(-col_3, -Ref)
 
-
-
-url  <- "https://en.wikipedia.org/wiki/50_metres_freestyle"
-page <- read_html(url)
-
-# Extract the table immediately following each long course heading
-men_lc <- page |>
-  html_element(xpath = "//*[@id='Men_long_course']/following::table[1]") |>
-  html_table()
-
-women_lc <- page |>
-  html_element(xpath = "//*[@id='Women_long_course']/following::table[1]") |>
-  html_table()
-
-
+dir.create("data", showWarnings = FALSE, recursive = TRUE)
+write_csv(combined_records, "data/combined_records.csv")
 
