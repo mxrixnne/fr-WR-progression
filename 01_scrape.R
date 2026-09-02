@@ -35,7 +35,9 @@ clean_table <- function(tbl){
   
   tbl |> 
     mutate(across(everything(), as.character)) |> 
-    mutate(across(everything(), ~ sub("\\[.*?\\]", "", .x)))
+    mutate(across(everything(), ~ gsub("[\u00a0\u200b]", " ", .x))) |> 
+    mutate(across(everything(), ~ gsub("\\[.*?\\]", "", .x))) |> 
+    mutate(across(everything(), trimws))
 }
 
 
@@ -49,7 +51,7 @@ combined_records <- imap_dfr(urls, function(url, event){
   )
 }) |> 
   # Parse dates
-  mutate(Date = as.Date(parse_date_time(Date, orders = c("dmy", "mdy")))) |> 
+  mutate(Date = as.Date(parse_date_time(Date, orders = c("dmY", "mdY"), locale = "C"))) |> 
   relocate(Event, Gender) |> 
   select(-col_3, -Ref)
 
